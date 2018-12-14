@@ -4,15 +4,15 @@ import { BlogItem } from './BlogItem';
 import * as stylesImport from './BlogPage.module.scss';
 const styles: any = stylesImport;
 
-const blogData = require('json!../../data/blog-posts.json');
+const blogData = require('../../data/blog-posts.json');
 
 export class BlogPage extends React.Component<any, any> {
-  public render() {
+  public render(): JSX.Element {
     return (
       <div>
-        <PageHeader pageTitle='Blog' backgroundColor='#73aa24' />
-        <div className={ styles.angle }></div>
-        { this._getBlogItems() }
+        <PageHeader pageTitle="Blog" backgroundColor="#73aa24" />
+        <div className={styles.angle} />
+        {this._getBlogItems()}
       </div>
     );
   }
@@ -23,13 +23,14 @@ export class BlogPage extends React.Component<any, any> {
     for (let i = 0; i < blogData.length; i++) {
       array.push(
         <BlogItem
-          title={ blogData[i].title }
-          author={ blogData[i].author }
-          previewDescription={ blogData[i].previewDescription }
-          monthPublished={ blogData[i].monthPublished }
-          dayPublished={ blogData[i].dayPublished }
-          yearPublished={ blogData[i].yearPublished }
-          id={ i } />
+          title={blogData[i].title}
+          author={blogData[i].author}
+          previewDescription={blogData[i].previewDescription}
+          monthPublished={blogData[i].monthPublished}
+          dayPublished={blogData[i].dayPublished}
+          yearPublished={blogData[i].yearPublished}
+          id={i}
+        />
       );
     }
     return array;

@@ -1,7 +1,14 @@
 language: node_js
 node_js:
-  - 'node'
-before_script:
-  - npm install -g gulp
+  - '10'
 script:
-  - npm run build
+  - node common/scripts/install-run-rush.js install --bypass-policy
+  - if [ $TRAVIS_BRANCH == "master" ] && [ $TRAVIS_PULL_REQUEST != "false" ];
+    then npm run checkchange;
+    fi
+  - npm run buildci
+  - npm run bundlesize
+  - npm run vrtest
+  - npm run check-for-changed-files
+# after_success:
+#  - ./scripts/node_modules/.bin/codecov -e TRAVIS_NODE_VERSION

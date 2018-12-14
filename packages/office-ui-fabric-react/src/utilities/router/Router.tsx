@@ -2,46 +2,54 @@ import * as React from 'react';
 import { BaseComponent } from '../../Utilities';
 
 export interface IRouterProps {
+  /**
+   * Gets the component ref.
+   */
+  componentRef?: () => void;
+
   replaceState?: boolean;
-  children?: React.ReactElement<any>[];
+  children?: any;
   onNewRouteLoaded?: () => void;
 }
 
 export class Router extends BaseComponent<IRouterProps, {}> {
-  public componentDidMount() {
+  public componentDidMount(): void {
     this._events.on(window, 'hashchange', () => this.forceUpdate());
   }
 
-  public render() {
-    return (
-      <div>
-        { this._resolveRoute() }
-      </div>
-    );
+  public render(): JSX.Element | null {
+    return this._resolveRoute();
   }
 
-  private _getPath() {
+  private _getPath(): string {
     let path = location.hash;
-    let index = path.lastIndexOf('#');
+    const hashIndex = path.lastIndexOf('#'),
+      questionMarkIndex = path.indexOf('?');
 
-    if (index > 0) {
-      path = path.substr(0, index);
+    // Look for the start of a query in the currentPath, then strip out the query to find the correct page to render
+    if (questionMarkIndex > -1) {
+      path = path.substr(0, questionMarkIndex);
+    }
+
+    if (hashIndex > 0) {
+      path = path.substr(0, hashIndex);
     }
 
     return path;
   }
 
-  private _resolveRoute(path?: string, children?: React.ReactNode) {
+  private _resolveRoute(path?: string, children?: React.ReactNode): React.DOMElement<any, Element> | null {
     path = path || this._getPath();
     children = children || this.props.children;
 
-    let routes = React.Children.toArray(children);
+    const routes = React.Children.toArray(children);
 
     for (let i = 0; i < routes.length; i++) {
-      let route: any = routes[i];
+      const route: any = routes[i];
 
       if (_match(path, route)) {
-        let { component, getComponent } = route.props;
+        const { getComponent } = route.props;
+        let { component } = route.props;
 
         if (getComponent) {
           let asynchronouslyResolved = false;
@@ -49,7 +57,7 @@ export class Router extends BaseComponent<IRouterProps, {}> {
           if (getComponent.component) {
             component = getComponent.component;
           } else {
-            getComponent((resolved) => {
+            getComponent((resolved: any) => {
               component = getComponent.component = resolved;
 
               if (asynchronouslyResolved) {
@@ -62,12 +70,12 @@ export class Router extends BaseComponent<IRouterProps, {}> {
         }
 
         if (component) {
-          let componentChildren = this._resolveRoute(path, route.props.children || []);
+          const componentChildren = this._resolveRoute(path, route.props.children || []);
 
           if (componentChildren) {
-            return React.createElement(component, { key: route.key }, componentChildren);
+            return React.createElement(component, { key: route.key }, componentChildren) as React.DOMElement<any, any>;
           } else {
-            return React.createElement(component, { key: route.key });
+            return React.createElement(component, { key: route.key }) as React.DOMElement<any, any>;
           }
         } else if (getComponent) {
           // We are asynchronously fetching this component.
@@ -78,20 +86,16 @@ export class Router extends BaseComponent<IRouterProps, {}> {
 
     return null;
   }
-
 }
 
-function _match(currentPath, child): boolean {
+function _match(currentPath: string, child: any): boolean {
   if (child.props) {
     let { path } = child.props;
 
     path = path || '';
     currentPath = currentPath || '';
 
-    return (
-      (!path) ||
-      (path.toLowerCase() === currentPath.toLowerCase())
-    );
+    return !path || path.toLowerCase() === currentPath.toLowerCase();
   }
 
   return false;

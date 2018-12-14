@@ -1,6 +1,6 @@
 /* tslint:disable:no-trailing-whitespace */
 
-import { IProperty, PropertyType } from './interfaces';
+import { IEnumProperty, IInterfaceProperty, IProperty, PropertyType } from './interfaces';
 import { InterfaceParserHelper } from './InterfaceParserHelper';
 import { EnumParserHelper } from './EnumParserHelper';
 
@@ -21,29 +21,35 @@ import { EnumParserHelper } from './EnumParserHelper';
  */
 export function parse(source: string, propsInterfaceOrEnumName?: string): IProperty[] {
   let props: IProperty[] = [];
-  let regex: RegExp = null;
+  let regex: RegExp | null = null;
   let parseInfo;
 
-  let propertyNameSuffix = (type: string) => type === 'interface' ? ' interface' : ' enum';
-  let propertyType = (type: string) => type === 'interface' ? PropertyType.interface : PropertyType.enum;
+  let propertyNameSuffix = (type: string) => (type === 'interface' ? ' interface' : ' enum');
+  let propertyType = (type: string) => (type === 'interface' ? PropertyType.interface : PropertyType.enum);
+
+  // Remove all backslashes that are not immediately followed by another backslash
+  // E.g. "\text" becomes "text", "\\text" becomes "\text"
+  const escapedSource = source.replace(/\\(?!\\)/g, '');
 
   if (propsInterfaceOrEnumName) {
-    regex = new RegExp(`export (interface|enum) ${propsInterfaceOrEnumName}(?: extends .*?)? \\{(.*[\\r\\n]*)*?\\}`);
-    let regexResult = regex.exec(source);
+    regex = new RegExp(`^export (interface|(?:const )?enum) ${propsInterfaceOrEnumName}(?:\\s*extends .*?)? \\{( |.*[\\r\\n]*)*?\\}`, 'm');
+    let regexResult = regex.exec(escapedSource);
     if (regexResult && regexResult.length > 0) {
       parseInfo = _parseEnumOrInterface(regexResult);
-      return [<IProperty>{
-        name: propsInterfaceOrEnumName,
-        propertyName: propsInterfaceOrEnumName + propertyNameSuffix(regexResult[1]),
-        propertyType: propertyType(regexResult[1]),
-        property: parseInfo
-      }];
+      return [
+        <IProperty>{
+          name: propsInterfaceOrEnumName,
+          propertyName: propsInterfaceOrEnumName + propertyNameSuffix(regexResult[1]),
+          propertyType: propertyType(regexResult[1]),
+          property: parseInfo
+        }
+      ];
     }
   } else {
-    regex = new RegExp(`export (interface|enum) (\\S*?)(?: extends .*?)? \\{(.*[\\r\\n]*)*?\\}`, 'g');
-    let regexResult: RegExpExecArray;
+    regex = new RegExp(`^export (interface|(?:const )?enum) (\\S*?)(?:\\s*extends .*?)? \\{( |.*[\\r\\n]*)*?\\}`, 'gm');
+    let regexResult: RegExpExecArray | null;
     let results: Array<IProperty> = [];
-    while ((regexResult = regex.exec(source)) !== null) {
+    while ((regexResult = regex.exec(escapedSource)) !== null) {
       parseInfo = _parseEnumOrInterface(regexResult);
       results.push(<IProperty>{
         name: regexResult[2],
@@ -59,16 +65,14 @@ export function parse(source: string, propsInterfaceOrEnumName?: string): IPrope
   return props;
 }
 
-function _parseEnumOrInterface(regexResult: RegExpExecArray) {
-  let parseInfo;
+function _parseEnumOrInterface(regexResult: RegExpExecArray): IInterfaceProperty[] | IEnumProperty[] {
+  let parseInfo: IInterfaceProperty[] | IEnumProperty[];
   if (regexResult[1] === 'interface') {
     let parser = new InterfaceParserHelper(regexResult[0]);
     parseInfo = parser.parse();
-    parser = null;
   } else {
     let parser = new EnumParserHelper(regexResult[0]);
     parseInfo = parser.parse();
-    parser = null;
   }
   return parseInfo;
 }

@@ -1,8 +1,13 @@
 import {
-  elementContains, getParent
+  DATA_PORTAL_ATTRIBUTE,
+  elementContains,
+  getDocument,
+  getParent,
+  getWindow,
+  portalContainsElement,
+  setPortalAttribute,
+  setSSR
 } from './dom';
-
-const { expect } = chai;
 
 let unattachedSvg = document.createElement('svg');
 let unattachedDiv = document.createElement('div');
@@ -13,23 +18,23 @@ parentDiv.appendChild(childDiv);
 
 describe('elementContains', () => {
   it('can find a child', () => {
-    expect(elementContains(parentDiv, childDiv)).equals(true);
+    expect(elementContains(parentDiv, childDiv)).toEqual(true);
   });
 
   it('can return false on an unattached child', () => {
-    expect(elementContains(parentDiv, unattachedDiv)).equals(false);
+    expect(elementContains(parentDiv, unattachedDiv)).toEqual(false);
   });
 
   it('can return false on a null child', () => {
-    expect(elementContains(parentDiv, null)).equals(false);
+    expect(elementContains(parentDiv, null)).toEqual(false);
   });
 
   it('can return false on a null parent', () => {
-    expect(elementContains(null, null)).equals(false);
+    expect(elementContains(null, null)).toEqual(false);
   });
 
   it('can return false when parent is an svg', () => {
-    expect(elementContains(unattachedSvg, unattachedDiv)).equals(false);
+    expect(elementContains(unattachedSvg, unattachedDiv)).toEqual(false);
   });
 });
 
@@ -40,7 +45,90 @@ describe('getParent', () => {
     childSvg.appendChild(svgRectangle);
     parentDiv.appendChild(childSvg);
 
-    expect(getParent(svgRectangle)).equals(childSvg);
-    expect(getParent(childSvg)).equals(parentDiv);
+    expect(getParent(svgRectangle)).toEqual(childSvg);
+    expect(getParent(childSvg)).toEqual(parentDiv);
+  });
+});
+
+describe('getWindow', () => {
+  it('returns undefined in server environment', () => {
+    setSSR(true);
+    expect(getWindow()).toEqual(undefined);
+    setSSR(false);
+  });
+});
+
+describe('getDocument', () => {
+  it('returns undefined in server environment', () => {
+    setSSR(true);
+    expect(getDocument()).toEqual(undefined);
+    setSSR(false);
+  });
+});
+
+describe('setPortalAttribute', () => {
+  it('sets attribute', () => {
+    let testDiv = document.createElement('div');
+    expect(testDiv.getAttribute(DATA_PORTAL_ATTRIBUTE)).toBeFalsy();
+    setPortalAttribute(testDiv);
+    expect(testDiv.getAttribute(DATA_PORTAL_ATTRIBUTE)).toBeTruthy();
+  });
+});
+
+describe('portalContainsElement', () => {
+  let root: HTMLElement;
+  let leaf: HTMLElement;
+  let parent: HTMLElement;
+  let portal: HTMLElement;
+  let unlinked: HTMLElement;
+
+  beforeEach(() => {
+    root = document.createElement('div');
+    leaf = document.createElement('div');
+    parent = document.createElement('div');
+    portal = document.createElement('div');
+    unlinked = document.createElement('div');
+
+    setPortalAttribute(portal);
+  });
+
+  it('works with and without parent specified', () => {
+    root.appendChild(parent);
+    parent.appendChild(portal);
+    portal.appendChild(leaf);
+    expect(portalContainsElement(root)).toBeFalsy();
+    expect(portalContainsElement(parent)).toBeFalsy();
+    expect(portalContainsElement(portal)).toBeTruthy();
+    expect(portalContainsElement(leaf)).toBeTruthy();
+    expect(portalContainsElement(leaf, parent)).toBeTruthy();
+  });
+
+  it('works correctly when parent and child are in same portal', () => {
+    root.appendChild(portal);
+    portal.appendChild(parent);
+    parent.appendChild(leaf);
+    expect(portalContainsElement(parent)).toBeTruthy();
+    expect(portalContainsElement(leaf, parent)).toBeFalsy();
+  });
+
+  it('works with hierarchically invalid parents', () => {
+    root.appendChild(parent);
+    parent.appendChild(portal);
+    portal.appendChild(leaf);
+    // When parent is invalid, searches should go to root
+    expect(portalContainsElement(root, leaf)).toBeFalsy();
+    expect(portalContainsElement(parent, leaf)).toBeFalsy();
+    expect(portalContainsElement(portal, leaf)).toBeTruthy();
+    expect(portalContainsElement(leaf, unlinked)).toBeTruthy();
+  });
+
+  it('works when element is parent', () => {
+    root.appendChild(parent);
+    parent.appendChild(portal);
+    portal.appendChild(leaf);
+    expect(portalContainsElement(root, root)).toBeFalsy();
+    expect(portalContainsElement(parent, parent)).toBeFalsy();
+    expect(portalContainsElement(portal, portal)).toBeTruthy();
+    expect(portalContainsElement(leaf, leaf)).toBeFalsy();
   });
 });

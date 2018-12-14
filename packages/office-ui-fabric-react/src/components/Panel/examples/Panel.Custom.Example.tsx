@@ -1,37 +1,42 @@
 import * as React from 'react';
-import { Button } from 'office-ui-fabric-react/lib/Button';
+import { DefaultButton } from 'office-ui-fabric-react/lib/Button';
 import { Panel, PanelType } from 'office-ui-fabric-react/lib/Panel';
 
-export class PanelCustomExample extends React.Component<any, any> {
-
-  constructor() {
-    super();
+export class PanelCustomExample extends React.Component<
+  {},
+  {
+    showPanel: boolean;
+  }
+> {
+  constructor(props: {}) {
+    super(props);
     this.state = {
       showPanel: false
     };
   }
 
-  public render() {
+  public render(): JSX.Element {
     return (
       <div>
-        <Button description='Opens the Sample Panel' onClick={ this._showPanel.bind(this) }>Open Panel</Button>
+        <DefaultButton text="Open Panel" secondaryText="Opens the Sample Panel" onClick={this._showPanel} />
         <Panel
-          isOpen={ this.state.showPanel }
-          onDismiss={ this._closePanel.bind(this) }
-          type={ PanelType.custom }
-          customWidth='888px'
-          headerText='Custom Panel with custom 888px width'
+          isOpen={this.state.showPanel}
+          onDismiss={this._closePanel}
+          type={PanelType.custom}
+          customWidth="888px"
+          headerText="Custom Panel with custom 888px width"
         >
-          <span className='ms-font-m'>Content goes here.</span>
+          <span>Content goes here.</span>
         </Panel>
       </div>
     );
   }
 
-  private _showPanel() {
+  private _showPanel = (): void => {
     this.setState({ showPanel: true });
-  }
-  private _closePanel() {
+  };
+
+  private _closePanel = (): void => {
     this.setState({ showPanel: false });
-  }
+  };
 }

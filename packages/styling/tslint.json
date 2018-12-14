@@ -1,6 +1,7 @@
 {
-  "extends": [
-    "../../tslint.json"
-  ],
-  "rules": {}
+  "extends": ["@uifabric/tslint-rules"],
+  "rules": {
+    "deprecation": false,
+    "prefer-const": false
+  }
 }

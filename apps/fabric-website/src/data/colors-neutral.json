@@ -27,11 +27,21 @@
   {
     "name": "neutralTertiary",
     "value": "#a6a6a6",
-    "labelColorClass": "ms-fontColor-white"
+    "labelColorClass": "ms-fontColor-black"
   },
   {
     "name": "neutralTertiaryAlt",
     "value": "#c8c8c8",
+    "labelColorClass": "ms-fontColor-black"
+  },
+  {
+    "name": "neutralQuaternary",
+    "value": "#d0d0d0",
+    "labelColorClass": "ms-fontColor-black"
+  },
+  {
+    "name": "neutralQuaternaryAlt",
+    "value": "#dadada",
     "labelColorClass": "ms-fontColor-black"
   },
   {

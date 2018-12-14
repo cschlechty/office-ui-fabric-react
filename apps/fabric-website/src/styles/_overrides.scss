@@ -1,3 +1,7 @@
+@import '~office-ui-fabric-react/dist/sass/References';
+@import './variables';
+@import './mixins';
+
 //== Fabric overrides and additions
 
 // Override the default Grid component so that the content is pulled out to the edge
@@ -8,7 +12,7 @@
 
   // Modifier to increase the Grid's gutters depending on screen size
   .ms-Grid--wide {
-    @media screen and (min-width: $ms-screen-lg-min) {
+    @media screen and (min-width: $uhf-screen-min-mobile) {
       margin: 0 (-$contentPadding-lg / 2);
       padding: 0 ($contentPadding-lg / 2);
 
@@ -21,7 +25,7 @@
       }
     }
 
-    @media screen and (min-width: $ms-screen-xl-min) {
+    @media screen and (min-width: $ms-screen-min-xl) {
       margin: 0 (-$contentPadding-xl / 2);
       padding: 0 ($contentPadding-xl / 2);
 
@@ -31,6 +35,23 @@
 
       .ms-Grid-col {
         padding: 0 ($contentPadding-xl / 2);
+      }
+    }
+  }
+
+  @include high-contrast {
+    // Temporary workaround for unnecessarily-specific selector from MWF, which
+    // causes colors in Breadcrumb and other components to get stomped on.
+    // These should be removed if/when MWF pushes a change to make these
+    // selectors less specific.
+    // See https://github.com/OfficeDev/office-ui-fabric-react/issues/6468 for more details.
+    [class*='m-'] button:not(.c-select-button):not(:disabled):not(.c-sequence-indicator):hover,
+    [class*='m-'] button:not(.c-select-button):not(:disabled):not(.c-sequence-indicator):active,
+    [class*='c-'] button:not(.c-select-button):not(:disabled):not(.c-sequence-indicator):hover,
+    [class*='c-'] button:not(.c-select-button):not(:disabled):not(.c-sequence-indicator):active {
+      &.ms-Breadcrumb-itemLink {
+        color: Highlight !important;
+        background-color: $ms-color-neutralLighter !important;
       }
     }
   }

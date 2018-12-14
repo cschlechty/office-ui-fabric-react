@@ -1,49 +1,70 @@
-import { IObjectWithKey, ISelection, SELECTION_CHANGE } from './interfaces';
+import { IObjectWithKey, ISelection, SELECTION_CHANGE, SelectionMode } from './interfaces';
 import { EventGroup } from '../../Utilities';
 
 export interface ISelectionOptions {
   onSelectionChanged?: () => void;
-  getKey?: (item: IObjectWithKey, index?: number) => string;
-  canSelectItem?: (item: IObjectWithKey) => boolean;
+  getKey?: (item: IObjectWithKey, index?: number) => string | number;
+  canSelectItem?: (item: IObjectWithKey, index?: number) => boolean;
+  selectionMode?: SelectionMode;
 }
 
 export class Selection implements ISelection {
   public count: number;
-  public getKey: (item: IObjectWithKey, index?: number) => string;
-  public canSelectItem: (item: IObjectWithKey) => boolean;
+  public readonly mode: SelectionMode;
+
+  private _getKey: (item: IObjectWithKey, index?: number) => string | number;
+  private _canSelectItem: (item: IObjectWithKey, index?: number) => boolean;
 
   private _changeEventSuppressionCount: number;
   private _items: IObjectWithKey[];
-  private _selectedItems: IObjectWithKey[];
+  private _selectedItems: IObjectWithKey[] | null;
+  private _selectedIndices: number[] | undefined;
   private _isAllSelected: boolean;
   private _exemptedIndices: { [index: string]: boolean };
   private _exemptedCount: number;
   private _keyToIndexMap: { [key: string]: number };
   private _anchoredIndex: number;
-  private _onSelectionChanged: () => void;
+  private _onSelectionChanged: (() => void) | undefined;
   private _hasChanged: boolean;
   private _unselectableIndices: { [index: string]: boolean };
   private _unselectableCount: number;
+  private _isModal: boolean;
 
   constructor(options: ISelectionOptions = {}) {
-    let {
-      onSelectionChanged,
-      getKey,
-      canSelectItem = (item: IObjectWithKey) => { return true; }
-    } = options;
-    this.getKey = getKey || ((item: IObjectWithKey, index?: number) => (item ? item.key : String(index)));
+    const { onSelectionChanged, getKey, canSelectItem = (item: IObjectWithKey) => true, selectionMode = SelectionMode.multiple } = options;
+
+    this.mode = selectionMode;
+
+    this._getKey = getKey || defaultGetKey;
 
     this._changeEventSuppressionCount = 0;
     this._exemptedCount = 0;
     this._anchoredIndex = 0;
     this._unselectableCount = 0;
-    this.setItems([], true);
 
     this._onSelectionChanged = onSelectionChanged;
-    this.canSelectItem = canSelectItem;
+    this._canSelectItem = canSelectItem;
+
+    this._isModal = false;
+
+    this.setItems([], true);
   }
 
-  public setChangeEvents(isEnabled: boolean, suppressChange?: boolean) {
+  public canSelectItem(item: IObjectWithKey, index?: number): boolean {
+    if (typeof index === 'number' && index < 0) {
+      return false;
+    }
+
+    return this._canSelectItem(item, index);
+  }
+
+  public getKey(item: IObjectWithKey, index?: number): string {
+    const key = this._getKey(item, index);
+
+    return typeof key === 'number' || key ? `${key}` : '';
+  }
+
+  public setChangeEvents(isEnabled: boolean, suppressChange?: boolean): void {
     this._changeEventSuppressionCount += isEnabled ? -1 : 1;
 
     if (this._changeEventSuppressionCount === 0 && this._hasChanged) {
@@ -55,15 +76,35 @@ export class Selection implements ISelection {
     }
   }
 
+  public isModal(): boolean {
+    return this._isModal;
+  }
+
+  public setModal(isModal: boolean): void {
+    if (this._isModal !== isModal) {
+      this.setChangeEvents(false);
+
+      this._isModal = isModal;
+
+      if (!isModal) {
+        this.setAllSelected(false);
+      }
+
+      this._change();
+
+      this.setChangeEvents(true);
+    }
+  }
+
   /**
    * Selection needs the items, call this method to set them. If the set
    * of items is the same, this will re-evaluate selection and index maps.
    * Otherwise, shouldClear should be set to true, so that selection is
    * cleared.
    */
-  public setItems(items: IObjectWithKey[], shouldClear = true) {
-    let newKeyToIndexMap: { [key: string]: number } = {};
-    let newUnselectableIndices: { [key: string]: boolean } = {};
+  public setItems(items: IObjectWithKey[], shouldClear: boolean = true): void {
+    const newKeyToIndexMap: { [key: string]: number } = {};
+    const newUnselectableIndices: { [key: string]: boolean } = {};
     let hasSelectionChanged = false;
 
     this.setChangeEvents(false);
@@ -73,10 +114,14 @@ export class Selection implements ISelection {
 
     // Build lookup table for quick selection evaluation.
     for (let i = 0; i < items.length; i++) {
-      let item = items[i];
+      const item = items[i];
 
       if (item) {
-        newKeyToIndexMap[this.getKey(item, i)] = i;
+        const key = this.getKey(item, i);
+
+        if (key) {
+          newKeyToIndexMap[key] = i;
+        }
       }
 
       newUnselectableIndices[i] = item && !this.canSelectItem(item);
@@ -85,39 +130,47 @@ export class Selection implements ISelection {
       }
     }
 
-    if (shouldClear) {
+    if (shouldClear || items.length === 0) {
       this.setAllSelected(false);
     }
 
     // Check the exemption list for discrepencies.
-    let newExemptedIndicies: { [key: string]: boolean } = {};
+    const newExemptedIndicies: { [key: string]: boolean } = {};
+    let newExemptedCount = 0;
 
-    for (let indexProperty in this._exemptedIndices) {
+    for (const indexProperty in this._exemptedIndices) {
       if (this._exemptedIndices.hasOwnProperty(indexProperty)) {
-        let index = Number(indexProperty);
-        let item = this._items[index];
-        let exemptKey = item ? this.getKey(item, Number(index)) : undefined;
-        let newIndex = exemptKey ? newKeyToIndexMap[exemptKey] : index;
+        const index = Number(indexProperty);
+        const item = this._items[index];
+        const exemptKey = item ? this.getKey(item, Number(index)) : undefined;
+        const newIndex = exemptKey ? newKeyToIndexMap[exemptKey] : index;
 
         if (newIndex === undefined) {
-          // We don't know the index of the item any more so it's either moved or removed.
-          // In this case we reset the entire selection.
-          this.setAllSelected(false);
-          break;
+          // The item has likely been replaced or removed.
+          hasSelectionChanged = true;
         } else {
           // We know the new index of the item. update the existing exemption table.
           newExemptedIndicies[newIndex] = true;
-          hasSelectionChanged = hasSelectionChanged || (newIndex !== index);
+          newExemptedCount++;
+          hasSelectionChanged = hasSelectionChanged || newIndex !== index;
         }
       }
     }
 
+    if (this._items && this._exemptedCount === 0 && items.length !== this._items.length && this._isAllSelected) {
+      // If everything was selected but the number of items has changed, selection has changed.
+      hasSelectionChanged = true;
+    }
+
     this._exemptedIndices = newExemptedIndicies;
+    this._exemptedCount = newExemptedCount;
     this._keyToIndexMap = newKeyToIndexMap;
     this._unselectableIndices = newUnselectableIndices;
-    this._items = items || [];
+    this._items = items;
+    this._selectedItems = null;
 
     if (hasSelectionChanged) {
+      this._updateCount();
       this._change();
     }
 
@@ -132,9 +185,13 @@ export class Selection implements ISelection {
     if (!this._selectedItems) {
       this._selectedItems = [];
 
-      for (let i = 0; i < this._items.length; i++) {
-        if (this.isIndexSelected(i)) {
-          this._selectedItems.push(this._items[i]);
+      const items = this._items;
+
+      if (items) {
+        for (let i = 0; i < items.length; i++) {
+          if (this.isIndexSelected(i)) {
+            this._selectedItems.push(items[i]);
+          }
         }
       }
     }
@@ -143,11 +200,33 @@ export class Selection implements ISelection {
   }
 
   public getSelectedCount(): number {
-    return this._isAllSelected ? (this._items.length - this._exemptedCount - this._unselectableCount) : (this._exemptedCount);
+    return this._isAllSelected ? this._items.length - this._exemptedCount - this._unselectableCount : this._exemptedCount;
+  }
+
+  public getSelectedIndices(): number[] {
+    if (!this._selectedIndices) {
+      this._selectedIndices = [];
+
+      const items = this._items;
+
+      if (items) {
+        for (let i = 0; i < items.length; i++) {
+          if (this.isIndexSelected(i)) {
+            this._selectedIndices.push(i);
+          }
+        }
+      }
+    }
+
+    return this._selectedIndices;
   }
 
   public isRangeSelected(fromIndex: number, count: number): boolean {
-    let endIndex = fromIndex + count;
+    if (count === 0) {
+      return false;
+    }
+
+    const endIndex = fromIndex + count;
 
     for (let i = fromIndex; i < endIndex; i++) {
       if (!this.isIndexSelected(i)) {
@@ -161,45 +240,67 @@ export class Selection implements ISelection {
   public isAllSelected(): boolean {
     let selectableCount = this._items.length - this._unselectableCount;
 
+    // In single mode, we can only have a max of 1 item.
+    if (this.mode === SelectionMode.single) {
+      selectableCount = Math.min(selectableCount, 1);
+    }
+
     return (
-      (this.count > 0) &&
-      (this._isAllSelected && this._exemptedCount === 0) ||
-      (!this._isAllSelected && (this._exemptedCount === selectableCount) && selectableCount > 0));
+      (this.count > 0 && (this._isAllSelected && this._exemptedCount === 0)) ||
+      (!this._isAllSelected && this._exemptedCount === selectableCount && selectableCount > 0)
+    );
   }
 
   public isKeySelected(key: string): boolean {
-    let index = this._keyToIndexMap[key];
+    const index = this._keyToIndexMap[key];
 
     return this.isIndexSelected(index);
   }
 
   public isIndexSelected(index: number): boolean {
     return !!(
-      (this.count > 0) &&
-      (this._isAllSelected && !this._exemptedIndices[index] && !this._unselectableIndices[index]) ||
-      (!this._isAllSelected && this._exemptedIndices[index]));
+      (this.count > 0 && (this._isAllSelected && !this._exemptedIndices[index] && !this._unselectableIndices[index])) ||
+      (!this._isAllSelected && this._exemptedIndices[index])
+    );
   }
 
-  public setAllSelected(isAllSelected: boolean) {
-    let selectableCount = this._items ? (this._items.length - this._unselectableCount) : 0;
+  public setAllSelected(isAllSelected: boolean): void {
+    if (isAllSelected && this.mode !== SelectionMode.multiple) {
+      return;
+    }
+
+    const selectableCount = this._items ? this._items.length - this._unselectableCount : 0;
+
+    this.setChangeEvents(false);
 
     if (selectableCount > 0 && (this._exemptedCount > 0 || isAllSelected !== this._isAllSelected)) {
       this._exemptedIndices = {};
-      this._exemptedCount = 0;
-      this._isAllSelected = isAllSelected;
+
+      if (isAllSelected !== this._isAllSelected || this._exemptedCount > 0) {
+        this._exemptedCount = 0;
+        this._isAllSelected = isAllSelected;
+        this._change();
+      }
+
       this._updateCount();
     }
+
+    this.setChangeEvents(true);
   }
 
-  public setKeySelected(key: string, isSelected: boolean, shouldAnchor: boolean) {
-    let index = this._keyToIndexMap[key];
+  public setKeySelected(key: string, isSelected: boolean, shouldAnchor: boolean): void {
+    const index = this._keyToIndexMap[key];
 
     if (index >= 0) {
       this.setIndexSelected(index, isSelected, shouldAnchor);
     }
   }
 
-  public setIndexSelected(index: number, isSelected: boolean, shouldAnchor: boolean) {
+  public setIndexSelected(index: number, isSelected: boolean, shouldAnchor: boolean): void {
+    if (this.mode === SelectionMode.none) {
+      return;
+    }
+
     // Clamp the index.
     index = Math.min(Math.max(0, index), this._items.length - 1);
 
@@ -208,27 +309,25 @@ export class Selection implements ISelection {
       return;
     }
 
-    let isExempt = this._exemptedIndices[index];
-    let hasChanged = false;
-    let canSelect = !this._unselectableIndices[index];
+    this.setChangeEvents(false);
+
+    const isExempt = this._exemptedIndices[index];
+    const canSelect = !this._unselectableIndices[index];
 
     if (canSelect) {
+      if (isSelected && this.mode === SelectionMode.single) {
+        // If this is single-select, the previous selection should be removed.
+        this.setAllSelected(false);
+      }
+
       // Determine if we need to remove the exemption.
-      if (isExempt && (
-        (isSelected && this._isAllSelected) ||
-        (!isSelected && !this._isAllSelected)
-      )) {
-        hasChanged = true;
+      if (isExempt && ((isSelected && this._isAllSelected) || (!isSelected && !this._isAllSelected))) {
         delete this._exemptedIndices[index];
         this._exemptedCount--;
       }
 
       // Determine if we need to add the exemption.
-      if (!isExempt && (
-        (isSelected && !this._isAllSelected) ||
-        (!isSelected && this._isAllSelected)
-      )) {
-        hasChanged = true;
+      if (!isExempt && ((isSelected && !this._isAllSelected) || (!isSelected && this._isAllSelected))) {
         this._exemptedIndices[index] = true;
         this._exemptedCount++;
       }
@@ -238,19 +337,28 @@ export class Selection implements ISelection {
       }
     }
 
-    if (hasChanged) {
-      this._updateCount();
-    }
+    this._updateCount();
+
+    this.setChangeEvents(true);
   }
 
-  public selectToKey(key: string, clearSelection?: boolean) {
+  public selectToKey(key: string, clearSelection?: boolean): void {
     this.selectToIndex(this._keyToIndexMap[key], clearSelection);
   }
 
-  public selectToIndex(index: number, clearSelection?: boolean) {
-    let anchorIndex = this._anchoredIndex || 0;
+  public selectToIndex(index: number, clearSelection?: boolean): void {
+    if (this.mode === SelectionMode.none) {
+      return;
+    }
+
+    if (this.mode === SelectionMode.single) {
+      this.setIndexSelected(index, true, true);
+      return;
+    }
+
+    const anchorIndex = this._anchoredIndex || 0;
     let startIndex = Math.min(index, anchorIndex);
-    let endIndex = Math.max(index, anchorIndex);
+    const endIndex = Math.max(index, anchorIndex);
 
     this.setChangeEvents(false);
 
@@ -265,21 +373,29 @@ export class Selection implements ISelection {
     this.setChangeEvents(true);
   }
 
-  public toggleAllSelected() {
+  public toggleAllSelected(): void {
     this.setAllSelected(!this.isAllSelected());
   }
 
-  public toggleKeySelected(key: string) {
+  public toggleKeySelected(key: string): void {
     this.setKeySelected(key, !this.isKeySelected(key), true);
   }
 
-  public toggleIndexSelected(index: number) {
+  public toggleIndexSelected(index: number): void {
     this.setIndexSelected(index, !this.isIndexSelected(index), true);
   }
 
-  public toggleRangeSelected(fromIndex: number, count: number) {
-    let isRangeSelected = this.isRangeSelected(fromIndex, count);
-    let endIndex = fromIndex + count;
+  public toggleRangeSelected(fromIndex: number, count: number): void {
+    if (this.mode === SelectionMode.none) {
+      return;
+    }
+
+    const isRangeSelected = this.isRangeSelected(fromIndex, count);
+    const endIndex = fromIndex + count;
+
+    if (this.mode === SelectionMode.single && count > 1) {
+      return;
+    }
 
     this.setChangeEvents(false);
     for (let i = fromIndex; i < endIndex; i++) {
@@ -288,14 +404,23 @@ export class Selection implements ISelection {
     this.setChangeEvents(true);
   }
 
-  private _updateCount() {
-    this.count = this.getSelectedCount();
-    this._change();
+  private _updateCount(): void {
+    const count = this.getSelectedCount();
+
+    if (count !== this.count) {
+      this.count = count;
+      this._change();
+    }
+
+    if (!this.count) {
+      this.setModal(false);
+    }
   }
 
-  private _change() {
+  private _change(): void {
     if (this._changeEventSuppressionCount === 0) {
       this._selectedItems = null;
+      this._selectedIndices = undefined;
 
       EventGroup.raise(this, SELECTION_CHANGE);
 
@@ -306,5 +431,8 @@ export class Selection implements ISelection {
       this._hasChanged = true;
     }
   }
+}
 
+function defaultGetKey(item: IObjectWithKey, index?: number): string | number {
+  return item && item.key ? item.key : `${index}`;
 }

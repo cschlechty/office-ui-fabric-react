@@ -1,52 +1,67 @@
-/* tslint:disable:no-unused-variable */
 import * as React from 'react';
-/* tslint:enable:no-unused-variable */
+import * as renderer from 'react-test-renderer';
 
-import * as ReactDOM from 'react-dom';
-
-let { expect } = chai;
-
+import { PanelBase } from './Panel.base';
 import { Panel } from './Panel';
+let div: HTMLElement;
+
+const ReactDOM = require('react-dom');
 
 describe('Panel', () => {
-  afterEach(() => {
-    [].forEach.call(document.querySelectorAll('body > div'), div => div.parentNode.removeChild(div));
+  it('renders Panel correctly', () => {
+    // Mock createPortal to capture its component hierarchy in snapshot output.
+    ReactDOM.createPortal = jest.fn(element => {
+      return element;
+    });
 
-    expect(document.querySelector('.ms-Panel')).to.be.null;
+    const component = renderer.create(
+      <Panel isOpen={true} headerText="Test Panel">
+        <span>Content goes here</span>
+      </Panel>
+    );
+
+    expect(component.toJSON()).toMatchSnapshot();
+
+    ReactDOM.createPortal.mockClear();
   });
 
-  it('Fires the correct events when closing', () => {
-    let dismissedCalled = false;
-    let dismissCalled = false;
+  describe('onClose', () => {
+    beforeEach(() => {
+      div = document.createElement('div');
+    });
 
-    const handleDismissed = () => {
-      dismissedCalled = true;
-    };
+    afterEach(() => {
+      ReactDOM.unmountComponentAtNode(div);
+    });
 
-    const div = document.createElement('div');
+    it('fires the correct events when closing', done => {
+      let dismissedCalled = false;
+      let dismissCalled = false;
+      const setDismissTrue = (): void => {
+        dismissCalled = true;
+      };
+      const setDismissedTrue = (): void => {
+        dismissedCalled = true;
+      };
 
-    let panel: Panel = ReactDOM.render(
-      <Panel
-        isOpen={ true }
-        onDismiss={ () => { dismissCalled = true; } }
-        onDismissed={ handleDismissed } />,
-      div) as any;
+      const panel: PanelBase = ReactDOM.render(
+        <PanelBase isOpen={true} onDismiss={setDismissTrue} onDismissed={setDismissedTrue} />,
+        div
+      ) as any;
 
-    panel.dismiss();
+      panel.dismiss();
 
-    expect(dismissCalled).equals(true, 'onDismiss was not called');
-    expect(dismissedCalled).equals(false, 'onDismissed was called prematurely');
+      expect(dismissCalled).toEqual(true);
+      expect(dismissedCalled).toEqual(false);
 
-    // Generate animation event to simulate animation completing.
-    const event = document.createEvent('CustomEvent'); // AnimationEvent is not supported by PhantomJS
-    event.initCustomEvent('animationend', true, true, {});
-    (event as any).animationName = 'fadeOut';
-
-    const panelElement = document.querySelector('.ms-Panel');
-    expect(panel).not.to.be.null;
-
-    panelElement.dispatchEvent(event);
-
-    expect(dismissedCalled).equals(true, 'onDismissed was not called');
+      setTimeout(() => {
+        try {
+          expect(dismissedCalled).toEqual(true);
+          done();
+        } catch (e) {
+          done(e);
+        }
+      }, 250);
+    });
   });
 });
